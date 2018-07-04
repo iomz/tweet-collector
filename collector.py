@@ -52,7 +52,7 @@ class Collector(object):
                 time.sleep(DEFAULT_INTERVAL)
                 continue
             self._remaining_count = int(self._endpoint_rate_limit.remaining)
-            self.pp.pprint(self._endpoint_rate_limit)
+            self.pp.pprint([time.strftime('%d/%m/%Y_%T'), self._endpoint_rate_limit])
             break
 
     def _GetSearch(self, max_id=None):
@@ -69,7 +69,6 @@ class Collector(object):
 
         while True:
             if self._remaining_count == 0:
-                self.pp.pprint(self._endpoint_rate_limit)
                 while int(self._endpoint_rate_limit.reset) == 0:
                     logging.debug('retrieving the current rate limit...')
                     self._CheckRateLimit()
@@ -77,9 +76,9 @@ class Collector(object):
                 if self._remaining_count != 0:
                     continue
                 pause_duration = int(self._endpoint_rate_limit.reset) - int(time.time()) + 1
-                logging.debug('wait %d seconds before making the request' % pause_duration)
-                time.sleep(pause_duration)
-                self._CheckRateLimit()
+                if pause_duration > 0:
+                    logging.debug('wait %d seconds before making the request' % pause_duration)
+                    time.sleep(pause_duration)
             self._remaining_count -= 1
             try:
                 self._current_result = self._api.GetSearch(
@@ -124,13 +123,11 @@ class Collector(object):
             # save the current result
             for st in self._current_result['statuses']:
                 tweet = {'time': st['created_at'], 'id': st['id_str'], 'user': st['user']['screen_name'], 'text': st['text'], 'coord': st['coordinates'], 'geo_enabled': st['user']['geo_enabled']}
-                if tweet['coord'] is not None:
-                    self.pp.pprint(tweet)
                 self._WriteToCSV(tweet)
             
             # check the next result
             max_id = self._current_result['statuses'][-1]['id'] - 1
-            self.pp.pprint({'max_id': max_id})
+            self.pp.pprint([time.strftime('%d/%m/%Y_%T'), {'max_id': max_id}])
             # if covered everything after the last cycle
             if max_id <= self._since_id:
                 self._since_id = self._first_id
