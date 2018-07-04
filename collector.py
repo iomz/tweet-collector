@@ -14,7 +14,7 @@ import twitter
 CONFIG_FILE = 'collector.conf'
 DEFAULT_QUERY = 'q=頭痛%%20OR%%20ずつう%%20OR%%20頭が痛い%%20OR%%20頭がいたい%%20OR%%20あたまが痛い%%20OR%%20頭いたい%%20OR%%20あたま痛い%%20OR%%20あたまいたい%%20&locale=ja&result_type=recent&count=100'
 DEFAULT_DATA_FILE = 'data.csv'
-DEFAULT_INTERVAL = 5
+DEFAULT_INTERVAL = 3
 
 class Collector(object):
 
@@ -126,7 +126,12 @@ class Collector(object):
                 self._WriteToCSV(tweet)
             
             # check the next result
-            max_id = self._current_result['statuses'][-1]['id'] - 1
+            try:
+                max_id = self._current_result['statuses'][-1]['id'] - 1
+            except Exception as e:
+                logging.info(e)
+                max_id = 0
+                
             self.pp.pprint([time.strftime('%d/%m/%Y_%T'), {'max_id': max_id}])
             # if covered everything after the last cycle
             if max_id <= self._since_id:
