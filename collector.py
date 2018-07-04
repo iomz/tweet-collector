@@ -116,7 +116,6 @@ class Collector(object):
                     None,
                     None]
             w.writerow(row)
-            logging.debug(row)
 
     def RunForever(self):
         while True:
@@ -163,7 +162,7 @@ if __name__ == "__main__":
     config.read(CONFIG_FILE)
 
     if 'filename' in config['Log']:
-        logging.basicConfig(filename=config['Log']['filename'], format='%(levelname)s:%(message)s', level=logging.DEBUG)
+        logging.basicConfig(filename=config['Log']['filename'], format='%(asctime)s %(levelname)s:%(message)s', level=logging.DEBUG)
     else:
         logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
     
