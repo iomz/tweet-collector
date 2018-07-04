@@ -14,6 +14,7 @@ import twitter
 CONFIG_FILE = 'collector.conf'
 DEFAULT_QUERY = 'q=頭痛%%20OR%%20ずつう%%20OR%%20頭が痛い%%20OR%%20頭がいたい%%20OR%%20あたまが痛い%%20OR%%20頭いたい%%20OR%%20あたま痛い%%20OR%%20あたまいたい%%20&locale=ja&result_type=recent&count=100'
 DEFAULT_DATA_FILE = 'data.csv'
+DEFAULT_INTERVAL = 5
 
 class Collector(object):
 
@@ -48,7 +49,7 @@ class Collector(object):
                 self._endpoint_rate_limit = self._api.rate_limit.get_limit('/search/tweets')
             except Exception:
                 logging.debug(e)
-                time.sleep(1)
+                time.sleep(DEFAULT_INTERVAL)
                 continue
             self._remaining_count = int(self._endpoint_rate_limit.remaining)
             self.pp.pprint(self._endpoint_rate_limit)
@@ -72,7 +73,7 @@ class Collector(object):
                 while int(self._endpoint_rate_limit.reset) == 0:
                     logging.debug('retrieving the current rate limit...')
                     self._CheckRateLimit()
-                    time.sleep(5)
+                    time.sleep(DEFAULT_INTERVAL)
                 if self._remaining_count != 0:
                     continue
                 pause_duration = int(self._endpoint_rate_limit.reset) - int(time.time()) + 1
@@ -82,10 +83,12 @@ class Collector(object):
             self._remaining_count -= 1
             try:
                 self._current_result = self._api.GetSearch(
-                            raw_query=self._base_query, include_entities=False, return_json=True)
+                            raw_query=query,
+                            include_entities=False,
+                            return_json=True)
             except Exception as e:
                 logging.debug(e)
-                time.sleep(1)
+                time.sleep(DEFAULT_INTERVAL)
                 continue
             logging.info('query: ' + query)
             break
@@ -127,6 +130,7 @@ class Collector(object):
             
             # check the next result
             max_id = self._current_result['statuses'][-1]['id'] - 1
+            self.pp.pprint({'max_id': max_id})
             # if covered everything after the last cycle
             if max_id <= self._since_id:
                 self._since_id = self._first_id
@@ -134,8 +138,8 @@ class Collector(object):
                 time.sleep(60*60*12)
 
             # proceed to the next cycle after 2 seconds
-            logging.debug('wait 2 seconds before fetching the next result')
-            time.sleep(2)
+            logging.debug('wait %d seconds before fetching the next result' % DEFAULT_INTERVAL)
+            time.sleep(DEFAULT_INTERVAL)
             self._GetSearch(max_id)
 
 
