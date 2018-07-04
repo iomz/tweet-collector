@@ -1,0 +1,11 @@
+[Log]
+filename = collector.log
+
+[Twitter]
+consumer_key =
+consumer_secret =
+access_token_key =
+access_token_secret =
+most_recent_id =
+#base_query =
+
