@@ -14,7 +14,7 @@ import twitter
 CONFIG_FILE = 'collector.conf'
 DEFAULT_QUERY = 'q=頭痛%%20OR%%20ずつう%%20OR%%20頭が痛い%%20OR%%20頭がいたい%%20OR%%20あたまが痛い%%20OR%%20頭いたい%%20OR%%20あたま痛い%%20OR%%20あたまいたい%%20&locale=ja&result_type=recent&count=100'
 DEFAULT_DATA_FILE = 'data.csv'
-DEFAULT_INTERVAL = 3
+DEFAULT_INTERVAL = 5
 
 class Collector(object):
 
