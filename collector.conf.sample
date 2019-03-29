@@ -2,10 +2,11 @@
 filename = collector.log
 
 [Twitter]
-consumer_key =
-consumer_secret =
-access_token_key =
-access_token_secret =
-most_recent_id =
-#base_query =
-
+consumer_key = <consumer_key>
+consumer_secret = <consumer_secret>
+access_token_key = <access_token_key>
+access_token_secret = <access_token_secret>
+most_recent_id = <tweet_id>
+#base_query = q=頭痛%%20OR%%20ずつう%%20&locale=ja&result_type=recent&count=100
+#data_file = data.csv
+#sleep_interval = 5

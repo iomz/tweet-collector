@@ -14,7 +14,7 @@ import twitter
 CONFIG_FILE = 'collector.conf'
 DEFAULT_QUERY = 'q=頭痛%%20OR%%20ずつう%%20OR%%20頭が痛い%%20OR%%20頭がいたい%%20OR%%20あたまが痛い%%20OR%%20頭いたい%%20OR%%20あたま痛い%%20OR%%20あたまいたい%%20&locale=ja&result_type=recent&count=100'
 DEFAULT_DATA_FILE = 'data.csv'
-DEFAULT_INTERVAL = 5
+DEFAULT_SLEEP_INTERVAL = 5
 
 class Collector(object):
 
@@ -25,7 +25,8 @@ class Collector(object):
             access_token_secret=None,
             most_recent_id=None,
             base_query=None,
-            data_file=None):
+            data_file=None,
+            sleep_interval=None):
 
         self.pp = pprint.PrettyPrinter(indent=2)
         self._api = twitter.Api(consumer_key=consumer_key,
@@ -34,11 +35,12 @@ class Collector(object):
                 access_token_secret=access_token_secret)
         self._base_query = base_query
         self._data_file = data_file
+        self._sleep_interval = sleep_interval
         self._endpoint_rate_limit = None
         self._remaining_count = 0
         self._first_id = ''
         self._since_id = most_recent_id
-        
+
         # initial GetSearch and CheckRateLimit
         self._GetSearch()
         self._first_id = self._current_result['statuses'][0]['id']
@@ -49,7 +51,7 @@ class Collector(object):
                 self._endpoint_rate_limit = self._api.rate_limit.get_limit('/search/tweets')
             except Exception:
                 logging.debug(e)
-                time.sleep(DEFAULT_INTERVAL)
+                time.sleep(self._sleep_interval)
                 continue
             self._remaining_count = int(self._endpoint_rate_limit.remaining)
             self.pp.pprint([time.strftime('%d/%m/%Y_%T'), self._endpoint_rate_limit])
@@ -58,7 +60,7 @@ class Collector(object):
     def _GetSearch(self, max_id=None):
         while self._endpoint_rate_limit is None:
             self._CheckRateLimit()
-       
+
         query = ''
         if self._since_id == 0:
             query = self._base_query
@@ -72,7 +74,7 @@ class Collector(object):
                 while int(self._endpoint_rate_limit.reset) == 0:
                     logging.debug('retrieving the current rate limit...')
                     self._CheckRateLimit()
-                    time.sleep(DEFAULT_INTERVAL)
+                    time.sleep(self._sleep_interval)
                 if self._remaining_count != 0:
                     continue
                 pause_duration = int(self._endpoint_rate_limit.reset) - int(time.time()) + 1
@@ -87,7 +89,7 @@ class Collector(object):
                             return_json=True)
             except Exception as e:
                 logging.debug(e)
-                time.sleep(DEFAULT_INTERVAL)
+                time.sleep(self._sleep_interval)
                 continue
             logging.info('query: ' + query)
             break
@@ -123,14 +125,14 @@ class Collector(object):
             for st in self._current_result['statuses']:
                 tweet = {'time': st['created_at'], 'id': st['id_str'], 'user': st['user']['screen_name'], 'text': st['text'], 'coord': st['coordinates'], 'geo_enabled': st['user']['geo_enabled']}
                 self._WriteToCSV(tweet)
-            
+
             # check the next result
             try:
                 max_id = self._current_result['statuses'][-1]['id'] - 1
             except Exception as e:
                 logging.info(e)
                 max_id = 0
-                
+
             self.pp.pprint([time.strftime('%d/%m/%Y_%T'), {'max_id': max_id}])
             # if covered everything after the last cycle
             if max_id <= self._since_id:
@@ -139,8 +141,8 @@ class Collector(object):
                 time.sleep(60*60*12)
 
             # proceed to the next cycle after 2 seconds
-            logging.debug('wait %d seconds before fetching the next result' % DEFAULT_INTERVAL)
-            time.sleep(DEFAULT_INTERVAL)
+            logging.debug('wait %d seconds before fetching the next result' % self._sleep_interval)
+            time.sleep(self._sleep_interval)
             self._GetSearch(max_id)
 
 
@@ -158,14 +160,14 @@ def utc_to_jst(utc_dt):
 if __name__ == "__main__":
     config = configparser.ConfigParser()
     config['Log'] = {}
-    config['Twitter'] = {'most_recent_id': '0', 'base_query': DEFAULT_QUERY, 'data_file': DEFAULT_DATA_FILE}
+    config['Twitter'] = {'most_recent_id': '0', 'base_query': DEFAULT_QUERY, 'data_file': DEFAULT_DATA_FILE, 'sleep_interval': DEFAULT_SLEEP_INTERVAL}
     config.read(CONFIG_FILE)
 
     if 'filename' in config['Log']:
         logging.basicConfig(filename=config['Log']['filename'], format='%(asctime)s %(levelname)s:%(message)s', level=logging.DEBUG)
     else:
         logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
-    
+
     try:
         collector = Collector(consumer_key=config['Twitter']['consumer_key'],
             consumer_secret=config['Twitter']['consumer_secret'],
@@ -173,7 +175,8 @@ if __name__ == "__main__":
             access_token_secret=config['Twitter']['access_token_secret'],
             most_recent_id=int(config['Twitter']['most_recent_id']),
             base_query=config['Twitter']['base_query'],
-            data_file=config['Twitter']['data_file'])
+            data_file=config['Twitter']['data_file'],
+            sleep_interval=config['Twitter']['sleep_interval'])
     except KeyError as e:
         print("Error: %s parameter was not defined in %s" % (e, CONFIG_FILE))
         sys.exit(1)
