@@ -14,7 +14,7 @@ import twitter
 
 
 CONFIG_FILE = 'collector.conf'
-DEFAULT_QUERY = 'q=頭痛%%20OR%%20ずつう%%20OR%%20頭が痛い%%20OR%%20頭がいたい%%20OR%%20あたまが痛い%%20OR%%20頭いたい%%20OR%%20あたま痛い%%20OR%%20あたまいたい%%20&locale=ja&result_type=recent&count=100'
+DEFAULT_QUERY = 'q=hello%%20&locale=ja&result_type=recent&count=100'
 DEFAULT_DATA_FILE = 'data.csv'
 DEFAULT_SLEEP_INTERVAL = 5
 
@@ -43,6 +43,10 @@ class Collector(object):
         self._remaining_count = 0
         self._latest_id = None
         self._since_id = most_recent_id
+
+        # stdout the config
+        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'hatc is initialized'])
+        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), {'base_query': self._base_query}])
 
         # initial GetSearch and CheckRateLimit
         # this should get tweets since most_recent_id
