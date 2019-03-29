@@ -42,6 +42,7 @@ class Collector(object):
         self._endpoint_rate_limit = None
         self._remaining_count = 0
         self._latest_id = None
+        self._max_id = None
         self._since_id = most_recent_id
 
         # stdout the config
@@ -66,7 +67,7 @@ class Collector(object):
             break
 
 
-    def _GetSearch(self, max_id=None):
+    def _GetSearch(self):
         while self._endpoint_rate_limit is None:
             self._CheckRateLimit()
 
@@ -75,11 +76,11 @@ class Collector(object):
         if self._since_id == 0:
             query = self._base_query
         # 2. get everything since a specific tweet
-        elif max_id is None:
+        elif self._max_id is None:
             query = self._base_query + '&since_id=%d' % (self._since_id)
         # 3. get tweets in a specific range
         else:
-            query = self._base_query + '&since_id=%d&max_id=%d' % (self._since_id, max_id)
+            query = self._base_query + '&since_id=%d&max_id=%d' % (self._since_id, self._max_id)
 
         while True:
             # we know we consued all the query counts; wait for remaining_count to be recovered
@@ -92,7 +93,7 @@ class Collector(object):
                     continue
                 pause_duration = int(self._endpoint_rate_limit.reset) - int(time.time()) + 1
                 if pause_duration > 0:
-                    self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'wait %d seconds before making the request' % pause_duration])
+                    logging.debug('wait %d seconds before making the request' % pause_duration)
                     time.sleep(pause_duration)
 
             # subtract 1 from remaining_count
@@ -148,22 +149,37 @@ class Collector(object):
 
 
     def RunForever(self):
-        # initialize new_max_id
-        new_max_id = None
         while True:
-            # there is no tweet in the current iteration; wait and retry
+            # there are no tweets in the current iteration; sleep or rotate
             if len(self._current_result['statuses']) == 0:
-                self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'sleeping 12 hours before the next cycle :-)'])
-                time.sleep(60*60*12)
-                self._GetSearch(max_id)
+                # up-to-date; sleep
+                if self._latest_id is None:
+                    self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'sleeping 12 hours before the next cycle :-)'])
+                    logging.debug('sleeping 12 hours before the next cycle :-)')
+                    time.sleep(60*60*12)
+                    self._GetSearch()
+                    continue
+
+                self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'reached the oldest tweets available; rotating the target range'])
+                # set since_id to the latest id we know
+                self._since_id = self._latest_id
+                logging.info('new since_id: %d' % self._since_id)
+                # max_id should be cleared
+                self._max_id = None
+                # latest_id should be cleared
+                self._latest_id = None
+                # proceed to the next cycle
+                logging.debug('wait %d seconds before fetching the next result' % self._sleep_interval)
+                time.sleep(self._sleep_interval)
+                self._GetSearch()
                 continue
 
             # from here on process the current iteration
             try:
                 # this is the oldest tweet's id in the current iteration
-                new_max_id = self._current_result['statuses'][-1]['id'] - 1
-                # stdout the current new_max_id
-                self.pp.pprint([time.strftime('%d/%m/%Y_%T'), {'new_max_id': new_max_id}])
+                self._max_id = self._current_result['statuses'][-1]['id'] - 1
+                # stdout the current max_id
+                self.pp.pprint([time.strftime('%d/%m/%Y_%T'), {'new max_id': self._max_id}])
             # something is really wrong
             except Exception as e:
                 logging.warning(e)
@@ -177,21 +193,12 @@ class Collector(object):
             # check the number of tweets in this iteration
             number_of_tweets_in_this_cycle = len(self._current_result['statuses'])
             logging.info('%d tweets collected' % number_of_tweets_in_this_cycle)
-            # less tweets than requested; reached the oldest
-            if number_of_tweets_in_this_cycle < int(parse_qs(self._base_query)['count'][0]):
-                # set since_id to the latest id we know
-                self._since_id = self._latest_id
-                # new_since_id should be cleared
-                new_max_id = None
-                # reset latest_id
-                self._latest_id = None
-                logging.info('reached the oldest tweets available')
+            self.pp.pprint([time.strftime('%d/%m/%Y_%T'), '%d tweets collected' % number_of_tweets_in_this_cycle])
 
-            # proceed to the next cycle after 2 seconds
-            self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'wait %d seconds before fetching the next result' % self._sleep_interval])
-
+            # proceed to the next cycle
+            logging.debug('wait %d seconds before fetching the next result' % self._sleep_interval)
             time.sleep(self._sleep_interval)
-            self._GetSearch(new_max_id)
+            self._GetSearch()
 
 
 class JST(tzinfo):
