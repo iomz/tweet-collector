@@ -3,6 +3,7 @@
 
 from datetime import timedelta, timezone, tzinfo
 from dateutil.parser import parse
+from urllib.parse import parse_qs
 import configparser
 import csv
 import logging
@@ -11,10 +12,12 @@ import sys
 import time
 import twitter
 
+
 CONFIG_FILE = 'collector.conf'
-DEFAULT_QUERY = 'q=頭痛%%20OR%%20ずつう%%20OR%%20頭が痛い%%20OR%%20頭がいたい%%20OR%%20あたまが痛い%%20OR%%20頭いたい%%20OR%%20あたま痛い%%20OR%%20あたまいたい%%20&locale=ja&result_type=recent&count=100'
+DEFAULT_QUERY = 'q=hello%%20&locale=ja&result_type=recent&count=100'
 DEFAULT_DATA_FILE = 'data.csv'
 DEFAULT_SLEEP_INTERVAL = 5
+
 
 class Collector(object):
 
@@ -38,12 +41,17 @@ class Collector(object):
         self._sleep_interval = sleep_interval
         self._endpoint_rate_limit = None
         self._remaining_count = 0
-        self._first_id = ''
+        self._latest_id = None
         self._since_id = most_recent_id
 
+        # stdout the config
+        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'hatc is initialized'])
+        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), {'base_query': self._base_query}])
+
         # initial GetSearch and CheckRateLimit
+        # this should get tweets since most_recent_id
         self._GetSearch()
-        self._first_id = self._current_result['statuses'][0]['id']
+
 
     def _CheckRateLimit(self):
         while True:
@@ -57,19 +65,24 @@ class Collector(object):
             self.pp.pprint([time.strftime('%d/%m/%Y_%T'), self._endpoint_rate_limit])
             break
 
+
     def _GetSearch(self, max_id=None):
         while self._endpoint_rate_limit is None:
             self._CheckRateLimit()
 
         query = ''
+        # 1. there is no history; get everything since as old as possible
         if self._since_id == 0:
             query = self._base_query
+        # 2. get everything since a specific tweet
         elif max_id is None:
             query = self._base_query + '&since_id=%d' % (self._since_id)
+        # 3. get tweets in a specific range
         else:
             query = self._base_query + '&since_id=%d&max_id=%d' % (self._since_id, max_id)
 
         while True:
+            # we know we consued all the query counts; wait for remaining_count to be recovered
             if self._remaining_count == 0:
                 while int(self._endpoint_rate_limit.reset) == 0:
                     logging.debug('retrieving the current rate limit...')
@@ -79,20 +92,34 @@ class Collector(object):
                     continue
                 pause_duration = int(self._endpoint_rate_limit.reset) - int(time.time()) + 1
                 if pause_duration > 0:
-                    logging.debug('wait %d seconds before making the request' % pause_duration)
+                    self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'wait %d seconds before making the request' % pause_duration])
                     time.sleep(pause_duration)
+
+            # subtract 1 from remaining_count
             self._remaining_count -= 1
             try:
                 self._current_result = self._api.GetSearch(
                             raw_query=query,
                             include_entities=False,
                             return_json=True)
+            # coudn't get tweets: something is wrong
             except Exception as e:
-                logging.debug(e)
+                logging.warning(e)
                 time.sleep(self._sleep_interval)
                 continue
-            logging.info('query: ' + query)
+            logging.debug('query: ' + query)
             break
+
+        # set latest_id if None and there are any tweets
+        # if there's no tweets, keep last_id as None
+        if self._latest_id is None and len(self._current_result['statuses']) != 0:
+            try:
+                self._latest_id = self._current_result['statuses'][0]['id']
+                # something is really wrong
+            except Exception as e:
+                logging.warning(e)
+                sys.exit(2)
+
 
     def _WriteToCSV(self, tweet):
         if tweet['text'].startswith('RT @'):
@@ -119,31 +146,52 @@ class Collector(object):
                     None]
             w.writerow(row)
 
+
     def RunForever(self):
+        # initialize new_max_id
+        new_max_id = None
         while True:
+            # there is no tweet in the current iteration; wait and retry
+            if len(self._current_result['statuses']) == 0:
+                self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'sleeping 12 hours before the next cycle :-)'])
+                time.sleep(60*60*12)
+                self._GetSearch(max_id)
+                continue
+
+            # from here on process the current iteration
+            try:
+                # this is the oldest tweet's id in the current iteration
+                new_max_id = self._current_result['statuses'][-1]['id'] - 1
+                # stdout the current new_max_id
+                self.pp.pprint([time.strftime('%d/%m/%Y_%T'), {'new_max_id': new_max_id}])
+            # something is really wrong
+            except Exception as e:
+                logging.warning(e)
+                sys.exit(2)
+
             # save the current result
             for st in self._current_result['statuses']:
                 tweet = {'time': st['created_at'], 'id': st['id_str'], 'user': st['user']['screen_name'], 'text': st['text'], 'coord': st['coordinates'], 'geo_enabled': st['user']['geo_enabled']}
                 self._WriteToCSV(tweet)
 
-            # check the next result
-            try:
-                max_id = self._current_result['statuses'][-1]['id'] - 1
-            except Exception as e:
-                logging.info(e)
-                max_id = 0
-
-            self.pp.pprint([time.strftime('%d/%m/%Y_%T'), {'max_id': max_id}])
-            # if covered everything after the last cycle
-            if max_id <= self._since_id:
-                self._since_id = self._first_id
-                logging.info('sleeping 12 hours before the next cycle :-)')
-                time.sleep(60*60*12)
+            # check the number of tweets in this iteration
+            number_of_tweets_in_this_cycle = len(self._current_result['statuses'])
+            logging.info('%d tweets collected' % number_of_tweets_in_this_cycle)
+            # less tweets than requested; reached the oldest
+            if number_of_tweets_in_this_cycle < int(parse_qs(self._base_query)['count'][0]):
+                # set since_id to the latest id we know
+                self._since_id = self._latest_id
+                # new_since_id should be cleared
+                new_max_id = None
+                # reset latest_id
+                self._latest_id = None
+                logging.info('reached the oldest tweets available')
 
             # proceed to the next cycle after 2 seconds
-            logging.debug('wait %d seconds before fetching the next result' % self._sleep_interval)
+            self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'wait %d seconds before fetching the next result' % self._sleep_interval])
+
             time.sleep(self._sleep_interval)
-            self._GetSearch(max_id)
+            self._GetSearch(new_max_id)
 
 
 class JST(tzinfo):
@@ -154,8 +202,10 @@ class JST(tzinfo):
     def dst(self, dt):
         return timedelta(0)
 
+
 def utc_to_jst(utc_dt):
     return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=JST())
+
 
 if __name__ == "__main__":
     config = configparser.ConfigParser()
@@ -164,7 +214,7 @@ if __name__ == "__main__":
     config.read(CONFIG_FILE)
 
     if 'filename' in config['Log']:
-        logging.basicConfig(filename=config['Log']['filename'], format='%(asctime)s %(levelname)s:%(message)s', level=logging.DEBUG)
+        logging.basicConfig(filename=config['Log']['filename'], format='%(asctime)s %(levelname)s:%(message)s', level=logging.INFO)
     else:
         logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
@@ -176,7 +226,7 @@ if __name__ == "__main__":
             most_recent_id=int(config['Twitter']['most_recent_id']),
             base_query=config['Twitter']['base_query'],
             data_file=config['Twitter']['data_file'],
-            sleep_interval=config['Twitter']['sleep_interval'])
+            sleep_interval=int(config['Twitter']['sleep_interval']))
     except KeyError as e:
         print("Error: %s parameter was not defined in %s" % (e, CONFIG_FILE))
         sys.exit(1)
