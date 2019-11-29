@@ -3,6 +3,7 @@
 
 from datetime import datetime, timedelta, timezone, tzinfo
 from dateutil.parser import parse
+from natsort import natsorted
 from urllib.parse import parse_qs
 import configparser
 import csv
@@ -159,20 +160,25 @@ class Collector(object):
         - extract the new month data and make it as the new data_file
         - update self._current_month
         '''
-        # Dump the data from last month to the file
+        # Prepare the target dir and the filename for rotation
         if not os.path.exists(DEFAULT_DATA_DIR):
             os.makedirs(DEFAULT_DATA_DIR)
         last_month_data_file = os.path.join(DEFAULT_DATA_DIR, self._current_month + ".csv")
-        last_month_f = open(last_month_data_file, 'a')
-        new_data = []
 
+        # Read the data
+        last_month_data = set()
+        new_data = []
         with open(self._data_file, 'r') as f:
             for l in f.readlines():
                 if l.startswith(self._current_month):
-                    last_month_f.write(l)
+                    last_month_data.add(l)
                 else:
                     new_data.append(l)
-        last_month_f.close()
+
+        # Dump the data from last month to the file
+        with open(last_month_data_file, 'a') as f:
+            for l in natsorted(last_month_data):
+                f.write(l)
 
         # Backup the old data file
         os.rename(self._data_file, self._data_file + ".bak")
