@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-from datetime import timedelta, timezone, tzinfo
+from datetime import datetime, timedelta, timezone, tzinfo
 from dateutil.parser import parse
 from urllib.parse import parse_qs
 import configparser
 import csv
 import logging
 import pprint
+import os
 import sys
 import time
 import twitter
@@ -16,6 +17,7 @@ import twitter
 CONFIG_FILE = 'collector.conf'
 DEFAULT_QUERY = 'q=hello%%20&locale=ja&result_type=recent&count=100'
 DEFAULT_DATA_FILE = 'data.csv'
+DEFAULT_DATA_DIR = 'data'
 DEFAULT_SLEEP_INTERVAL = 5
 
 
@@ -44,6 +46,7 @@ class Collector(object):
         self._latest_id = None
         self._max_id = None
         self._since_id = most_recent_id
+        self._current_month = get_current_month()
 
         # stdout the config
         self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'hatc is initialized'])
@@ -77,10 +80,10 @@ class Collector(object):
             query = self._base_query
         # 2. get everything since a specific tweet
         elif self._max_id is None:
-            query = self._base_query + '&since_id=%d' % (self._since_id)
+            query = self._base_query + '&since_id={}'.format(self._since_id)
         # 3. get tweets in a specific range
         else:
-            query = self._base_query + '&since_id=%d&max_id=%d' % (self._since_id, self._max_id)
+            query = self._base_query + '&since_id={}&max_id={}'.format(self._since_id, self._max_id)
 
         while True:
             # we know we consued all the query counts; wait for remaining_count to be recovered
@@ -93,7 +96,7 @@ class Collector(object):
                     continue
                 pause_duration = int(self._endpoint_rate_limit.reset) - int(time.time()) + 1
                 if pause_duration > 0:
-                    logging.debug('wait %d seconds before making the request' % pause_duration)
+                    logging.debug('wait {} seconds before making the request'.format(pause_duration))
                     time.sleep(pause_duration)
 
             # subtract 1 from remaining_count
@@ -148,12 +151,52 @@ class Collector(object):
             w.writerow(row)
 
 
+    def _RotateCSV(self):
+        '''
+        Do the following:
+        - dump the data from last month to the file
+        - backup the current data_file
+        - extract the new month data and make it as the new data_file
+        - update self._current_month
+        '''
+        # Dump the data from last month to the file
+        if not os.path.exists(DEFAULT_DATA_DIR):
+            os.makedirs(DEFAULT_DATA_DIR)
+        last_month_data_file = os.path.join(DEFAULT_DATA_DIR, self._current_month + ".csv")
+        last_month_f = open(last_month_data_file, 'a')
+        new_data = []
+
+        with open(self._data_file, 'r') as f:
+            for l in f.readlines():
+                if l.startswith(self._current_month):
+                    last_month_f.write(l)
+                else:
+                    new_data.append(l)
+        last_month_f.close()
+
+        # Backup the old data file
+        os.rename(self._data_file, self._data_file + ".bak")
+
+        # Write out the data for the current_month
+        with open(self._data_file, 'a') as f:
+            for l in new_data:
+                f.write(l)
+
+        # Update the current_month
+        self._current_month = get_current_month()
+
+        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'rotated the data file -> {}'.format(self._current_month)])
+        logging.debug('rotated the data file -> {}'.format(self._current_month))
+
+
     def RunForever(self):
         while True:
             # there are no tweets in the current iteration; sleep or rotate
             if len(self._current_result['statuses']) == 0:
                 # up-to-date; sleep
                 if self._latest_id is None:
+                    if get_current_month() != self._current_month:
+                        self._RotateCSV()
                     self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'sleeping 12 hours before the next cycle :-)'])
                     logging.debug('sleeping 12 hours before the next cycle :-)')
                     time.sleep(60*60*12)
@@ -163,13 +206,13 @@ class Collector(object):
                 self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'reached the oldest tweets available; rotating the target range'])
                 # set since_id to the latest id we know
                 self._since_id = self._latest_id
-                logging.info('new since_id: %d' % self._since_id)
+                logging.info('new since_id: {}'.format(self._since_id))
                 # max_id should be cleared
                 self._max_id = None
                 # latest_id should be cleared
                 self._latest_id = None
                 # proceed to the next cycle
-                logging.debug('wait %d seconds before fetching the next result' % self._sleep_interval)
+                logging.debug('wait {} seconds before fetching the next result'.format(self._sleep_interval))
                 time.sleep(self._sleep_interval)
                 self._GetSearch()
                 continue
@@ -192,11 +235,11 @@ class Collector(object):
 
             # check the number of tweets in this iteration
             number_of_tweets_in_this_cycle = len(self._current_result['statuses'])
-            logging.info('%d tweets collected' % number_of_tweets_in_this_cycle)
-            self.pp.pprint([time.strftime('%d/%m/%Y_%T'), '%d tweets collected' % number_of_tweets_in_this_cycle])
+            logging.info('{} tweets collected'.format(number_of_tweets_in_this_cycle))
+            self.pp.pprint([time.strftime('%d/%m/%Y_%T'), '{} tweets collected'.format(number_of_tweets_in_this_cycle)])
 
             # proceed to the next cycle
-            logging.debug('wait %d seconds before fetching the next result' % self._sleep_interval)
+            logging.debug('wait {} seconds before fetching the next result'.format(self._sleep_interval))
             time.sleep(self._sleep_interval)
             self._GetSearch()
 
@@ -209,6 +252,8 @@ class JST(tzinfo):
     def dst(self, dt):
         return timedelta(0)
 
+def get_current_month():
+    return datetime.now(tz=JST()).strftime('%Y-%m')
 
 def utc_to_jst(utc_dt):
     return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=JST())
@@ -235,7 +280,7 @@ if __name__ == "__main__":
             data_file=config['Twitter']['data_file'],
             sleep_interval=int(config['Twitter']['sleep_interval']))
     except KeyError as e:
-        print("Error: %s parameter was not defined in %s" % (e, CONFIG_FILE))
+        print("Error: {} parameter was not defined in {}".format(e, CONFIG_FILE))
         sys.exit(1)
 
     collector.RunForever()
