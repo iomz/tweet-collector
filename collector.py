@@ -32,7 +32,8 @@ class Collector(object):
             most_recent_id=None,
             base_query=None,
             data_file=None,
-            sleep_interval=None):
+            sleep_interval=None,
+            current_month=None):
 
         self.pp = pprint.PrettyPrinter(indent=2)
         self._api = twitter.Api(consumer_key=consumer_key,
@@ -47,7 +48,7 @@ class Collector(object):
         self._latest_id = None
         self._max_id = None
         self._since_id = most_recent_id
-        self._current_month = get_current_month()
+        self._current_month = current_month
 
         # stdout the config
         self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'hatc is initialized'])
@@ -183,6 +184,12 @@ class Collector(object):
         total = len(last_month_data)
         count = 0
         percents = [(x,int(total/100*x)) for x in range(10,100,10)]
+
+        ## Check if the file alredy exists
+        if os.path.exists(last_month_data_file):
+            # Backup the file
+            os.rename(last_month_data_file, last_month_data_file + ".bak")
+
         with open(last_month_data_file, 'a') as f:
             for l in natsorted(last_month_data):
                 count += 1
@@ -282,7 +289,7 @@ def utc_to_jst(utc_dt):
 if __name__ == "__main__":
     config = configparser.ConfigParser()
     config['Log'] = {}
-    config['Twitter'] = {'most_recent_id': '0', 'base_query': DEFAULT_QUERY, 'data_file': DEFAULT_DATA_FILE, 'sleep_interval': DEFAULT_SLEEP_INTERVAL}
+    config['Twitter'] = {'most_recent_id': '0', 'base_query': DEFAULT_QUERY, 'data_file': DEFAULT_DATA_FILE, 'sleep_interval': DEFAULT_SLEEP_INTERVAL, 'current_month': get_current_month()}
     config.read(CONFIG_FILE)
 
     if 'filename' in config['Log']:
@@ -298,7 +305,8 @@ if __name__ == "__main__":
             most_recent_id=int(config['Twitter']['most_recent_id']),
             base_query=config['Twitter']['base_query'],
             data_file=config['Twitter']['data_file'],
-            sleep_interval=int(config['Twitter']['sleep_interval']))
+            sleep_interval=int(config['Twitter']['sleep_interval']),
+            current_month=config['Twitter']['current_month'])
     except KeyError as e:
         print("Error: {} parameter was not defined in {}".format(e, CONFIG_FILE))
         sys.exit(1)
