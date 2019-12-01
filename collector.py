@@ -161,38 +161,50 @@ class Collector(object):
         - update self._current_month
         '''
         # Prepare the target dir and the filename for rotation
+        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'preparing the data rotation dir'])
         if not os.path.exists(DEFAULT_DATA_DIR):
             os.makedirs(DEFAULT_DATA_DIR)
         last_month_data_file = os.path.join(DEFAULT_DATA_DIR, self._current_month + ".csv")
 
         # Read the data
+        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'reading the data file'])
         last_month_data = set()
         new_data = []
+        next_month = get_current_month()
         with open(self._data_file, 'r') as f:
             for l in f.readlines():
                 if l.startswith(self._current_month):
                     last_month_data.add(l)
-                else:
+                elif l.startswith(next_month):
                     new_data.append(l)
 
         # Dump the data from last month to the file
+        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'cleaning up the data from the last month...'])
+        total = len(last_month_data)
+        count = 0
+        percents = [(x,int(total/100*x)) for x in range(10,100,10)]
         with open(last_month_data_file, 'a') as f:
             for l in natsorted(last_month_data):
+                count += 1
                 f.write(l)
+                if count in percents:
+                    self.pp.pprint([time.strftime('%d/%m/%Y_%T'), '{} % saved'.format(percents[count])])
 
         # Backup the old data file
+        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'performing the data backup'])
         os.rename(self._data_file, self._data_file + ".bak")
 
         # Write out the data for the current_month
+        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'updating the data'])
         with open(self._data_file, 'a') as f:
             for l in new_data:
                 f.write(l)
 
         # Update the current_month
-        self._current_month = get_current_month()
-
-        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'rotated the data file -> {}'.format(self._current_month)])
-        logging.debug('rotated the data file -> {}'.format(self._current_month))
+        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'rotated the data file {} -> {}'.format(self._current_month, next_month)])
+        logging.debug('rotated the data file {} -> {}'.format(self._current_month, next_month))
+        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'updating the current_month'])
+        self._current_month = next_month
 
 
     def RunForever(self):
@@ -202,7 +214,9 @@ class Collector(object):
                 # up-to-date; sleep
                 if self._latest_id is None:
                     if get_current_month() != self._current_month:
+                        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'month changed; rotating the data'])
                         self._RotateCSV()
+
                     self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'sleeping 12 hours before the next cycle :-)'])
                     logging.debug('sleeping 12 hours before the next cycle :-)')
                     time.sleep(60*60*12)
