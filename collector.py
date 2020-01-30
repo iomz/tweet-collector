@@ -220,10 +220,6 @@ class Collector(object):
             if len(self._current_result['statuses']) == 0:
                 # up-to-date; sleep
                 if self._latest_id is None:
-                    if get_current_month() != self._current_month:
-                        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'month changed; rotating the data'])
-                        self._RotateCSV()
-
                     self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'sleeping 12 hours before the next cycle :-)'])
                     logging.debug('sleeping 12 hours before the next cycle :-)')
                     time.sleep(60*60*12)
@@ -269,6 +265,12 @@ class Collector(object):
             logging.debug('wait {} seconds before fetching the next result'.format(self._sleep_interval))
             time.sleep(self._sleep_interval)
             self._GetSearch()
+
+	    # TODO: fix checking the current date from the tweets
+	    # Check for the data rotation
+            if get_current_month() != self._current_month:
+                self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'month changed; rotating the data'])
+                self._RotateCSV()
 
 
 class JST(tzinfo):
