@@ -221,6 +221,13 @@ class Collector(object):
             if len(self._current_result['statuses']) == 0:
                 # up-to-date; sleep
                 if self._latest_id is None:
+                    # check the ratation before sleeping
+                    if self._rotate_pending:
+                        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'month changed; rotating the data'])
+                        self._RotateCSV()
+                        self._rotate_pending = False
+
+                    # sleep for 12 hours
                     self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'sleeping 12 hours before the next cycle :-)'])
                     logging.debug('sleeping 12 hours before the next cycle :-)')
                     time.sleep(60*60*12)
@@ -269,12 +276,6 @@ class Collector(object):
             logging.debug('wait {} seconds before fetching the next result'.format(self._sleep_interval))
             time.sleep(self._sleep_interval)
             self._GetSearch()
-
-            # check the ratation
-            if self._rotate_pending:
-                self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'month changed; rotating the data'])
-                self._RotateCSV()
-                self._rotate_pending = False
 
 
 class JST(tzinfo):
