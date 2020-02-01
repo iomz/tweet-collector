@@ -49,6 +49,7 @@ class Collector(object):
         self._max_id = None
         self._since_id = most_recent_id
         self._current_month = current_month
+        self._rotate_pending = False
 
         # stdout the config
         self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'hatc is initialized'])
@@ -255,6 +256,9 @@ class Collector(object):
             for st in self._current_result['statuses']:
                 tweet = {'time': st['created_at'], 'id': st['id_str'], 'user': st['user']['screen_name'], 'text': st['text'], 'coord': st['coordinates'], 'geo_enabled': st['user']['geo_enabled']}
                 self._WriteToCSV(tweet)
+                # check the current date from the tweets
+                if st['created_at'][:7] != self._current_month:
+                    self._rotate_pending = True
 
             # check the number of tweets in this iteration
             number_of_tweets_in_this_cycle = len(self._current_result['statuses'])
@@ -266,11 +270,11 @@ class Collector(object):
             time.sleep(self._sleep_interval)
             self._GetSearch()
 
-	    # TODO: fix checking the current date from the tweets
-	    # Check for the data rotation
-            if get_current_month() != self._current_month:
+            # check the ratation
+            if self._rotate_pending:
                 self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'month changed; rotating the data'])
                 self._RotateCSV()
+                self._rotate_pending = False
 
 
 class JST(tzinfo):
