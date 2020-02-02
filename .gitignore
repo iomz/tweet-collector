@@ -1,4 +1,6 @@
 data/*
 *.log
 *.conf
+*.bak
 data.csv
+
