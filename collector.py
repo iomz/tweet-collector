@@ -89,7 +89,7 @@ class Collector(object):
             query = self._base_query + '&since_id={}&max_id={}'.format(self._since_id, self._max_id)
 
         while True:
-            # we know we consued all the query counts; wait for remaining_count to be recovered
+            # we know we consumed all the query counts; wait for remaining_count to be recovered
             if self._remaining_count == 0:
                 while int(self._endpoint_rate_limit.reset) == 0:
                     logging.debug('retrieving the current rate limit...')
@@ -231,6 +231,12 @@ class Collector(object):
                     self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'sleeping 12 hours before the next cycle :-)'])
                     logging.debug('sleeping 12 hours before the next cycle :-)')
                     time.sleep(60*60*12)
+
+                    # check the current month
+                    if get_current_month() != self._current_month:
+                        # if the month changed, the next cycle should cover the end of the previous month
+                        self._rotate_pending = True
+
                     self._GetSearch()
                     continue
 
@@ -263,9 +269,10 @@ class Collector(object):
             for st in self._current_result['statuses']:
                 tweet = {'time': st['created_at'], 'id': st['id_str'], 'user': st['user']['screen_name'], 'text': st['text'], 'coord': st['coordinates'], 'geo_enabled': st['user']['geo_enabled']}
                 self._WriteToCSV(tweet)
-                # check the current date from the tweets
-                if st['created_at'][:7] != self._current_month:
-                    self._rotate_pending = True
+                ## check the current date from the tweets
+                ## this doesn't mean we can alreayd rotate the data...
+                #if st['created_at'][:7] != self._current_month:
+                #    self._rotate_pending = True
 
             # check the number of tweets in this iteration
             number_of_tweets_in_this_cycle = len(self._current_result['statuses'])
