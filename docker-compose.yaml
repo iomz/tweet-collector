@@ -1,0 +1,9 @@
+version: '3'
+services:
+  hatc:
+    image: iomz/hatc:latest
+    container_name: hatc
+    volumes:
+    - /home/iomz/qnap-home/tweet-collector:/app
+    stop_grace_period: 5s
+    restart: always
