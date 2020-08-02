@@ -8,7 +8,6 @@ from urllib.parse import parse_qs
 import configparser
 import csv
 import logging
-import pprint
 import os
 import sys
 import time
@@ -35,7 +34,6 @@ class Collector(object):
             sleep_interval=None,
             current_month=None):
 
-        self.pp = pprint.PrettyPrinter(indent=2)
         self._api = twitter.Api(consumer_key=consumer_key,
                 consumer_secret=consumer_secret,
                 access_token_key=access_token_key,
@@ -52,8 +50,8 @@ class Collector(object):
         self._rotate_pending = False
 
         # stdout the config
-        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'hatc is initialized'])
-        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), {'base_query': self._base_query}])
+        logging.info('hatc is initialized')
+        logging.info('base_query: ' + self._base_query)
 
         # initial GetSearch and CheckRateLimit
         # this should get tweets since most_recent_id
@@ -69,7 +67,7 @@ class Collector(object):
                 time.sleep(self._sleep_interval)
                 continue
             self._remaining_count = int(self._endpoint_rate_limit.remaining)
-            self.pp.pprint([time.strftime('%d/%m/%Y_%T'), self._endpoint_rate_limit])
+            logging.debug(self._endpoint_rate_limit)
             break
 
 
@@ -163,13 +161,13 @@ class Collector(object):
         - update self._current_month
         '''
         # Prepare the target dir and the filename for rotation
-        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'preparing the data rotation dir'])
+        logging.info('preparing the data rotation dir')
         if not os.path.exists(DEFAULT_DATA_DIR):
             os.makedirs(DEFAULT_DATA_DIR)
         last_month_data_file = os.path.join(DEFAULT_DATA_DIR, self._current_month + ".csv")
 
         # Read the data
-        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'reading the data file'])
+        logging.info('reading the data file')
         last_month_data = set()
         new_data = []
         next_month = get_current_month()
@@ -181,7 +179,7 @@ class Collector(object):
                     new_data.append(l)
 
         # Dump the data from last month to the file
-        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'cleaning up the data from the last month...'])
+        logging.info('cleaning up the data from the last month...')
         total = len(last_month_data)
         count = 0
         percents = [(x,int(total/100*x)) for x in range(10,100,10)]
@@ -196,22 +194,21 @@ class Collector(object):
                 count += 1
                 f.write(l)
                 if count in percents:
-                    self.pp.pprint([time.strftime('%d/%m/%Y_%T'), '{} % saved'.format(percents[count])])
+                    logging.debug('{} % saved'.format(percents[count]))
 
         # Backup the old data file
-        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'performing the data backup'])
+        logging.info('performing the data backup')
         os.rename(self._data_file, self._data_file + ".bak")
 
         # Write out the data for the current_month
-        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'updating the data'])
+        logging.info('updating the data')
         with open(self._data_file, 'a') as f:
             for l in new_data:
                 f.write(l)
 
         # Update the current_month
-        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'rotated the data file {} -> {}'.format(self._current_month, next_month)])
-        logging.debug('rotated the data file {} -> {}'.format(self._current_month, next_month))
-        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'updating the current_month'])
+        logging.info('rotated the data file {} -> {}'.format(self._current_month, next_month))
+        logging.info('updating the current_month')
         self._current_month = next_month
 
 
@@ -223,13 +220,12 @@ class Collector(object):
                 if self._latest_id is None:
                     # check the ratation before sleeping
                     if self._rotate_pending:
-                        self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'month changed; rotating the data'])
+                        logging.info('month changed; rotating the data')
                         self._RotateCSV()
                         self._rotate_pending = False
 
                     # sleep for 12 hours
-                    self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'sleeping 12 hours before the next cycle :-)'])
-                    logging.debug('sleeping 12 hours before the next cycle :-)')
+                    logging.info('sleeping 12 hours before the next cycle :-)')
                     time.sleep(60*60*12)
 
                     # check the current month
@@ -240,7 +236,7 @@ class Collector(object):
                     self._GetSearch()
                     continue
 
-                self.pp.pprint([time.strftime('%d/%m/%Y_%T'), 'reached the oldest tweets available; rotating the target range'])
+                logging.info('reached the oldest tweets available; rotating the target range')
                 # set since_id to the latest id we know
                 self._since_id = self._latest_id
                 logging.info('new since_id: {}'.format(self._since_id))
@@ -259,7 +255,7 @@ class Collector(object):
                 # this is the oldest tweet's id in the current iteration
                 self._max_id = self._current_result['statuses'][-1]['id'] - 1
                 # stdout the current max_id
-                self.pp.pprint([time.strftime('%d/%m/%Y_%T'), {'new max_id': self._max_id}])
+                logging.debug('new max_id: {}'.format(self._max_id))
             # something is really wrong
             except Exception as e:
                 logging.warning(e)
@@ -276,8 +272,7 @@ class Collector(object):
 
             # check the number of tweets in this iteration
             number_of_tweets_in_this_cycle = len(self._current_result['statuses'])
-            logging.info('{} tweets collected'.format(number_of_tweets_in_this_cycle))
-            self.pp.pprint([time.strftime('%d/%m/%Y_%T'), '{} tweets collected'.format(number_of_tweets_in_this_cycle)])
+            logging.debug('{} tweets collected'.format(number_of_tweets_in_this_cycle))
 
             # proceed to the next cycle
             logging.debug('wait {} seconds before fetching the next result'.format(self._sleep_interval))
