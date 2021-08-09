@@ -33,7 +33,8 @@ class Collector():
             base_query=None,
             data_file=None,
             sleep_interval=None,
-            current_month=None):
+            current_month=None,
+            data_rotate=None):
 
         self._api = twitter.Api(consumer_key=consumer_key,
                 consumer_secret=consumer_secret,
@@ -50,6 +51,7 @@ class Collector():
         self._current_month = current_month
         self._rotate_pending = False
         self._current_result = None
+        self._data_rotate = data_rotate
 
         # stdout the config
         logging.info('hatc is initialized')
@@ -228,9 +230,12 @@ class Collector():
                 if self._latest_id is None:
                     # check the ratation before sleeping
                     if self._rotate_pending:
-                        logging.info('month changed; rotating the data')
-                        self._rotate_csv()
-                        self._rotate_pending = False
+                        if not self._data_rotate:
+                            self._rotate_pending = False
+                        else:
+                            logging.info('month changed; rotating the data')
+                            self._rotate_csv()
+                            self._rotate_pending = False
 
                     # sleep for 12 hours
                     logging.info('sleeping 12 hours before the next cycle :-)')
@@ -322,7 +327,7 @@ if __name__ == "__main__":
             'data_file': DEFAULT_DATA_FILE,
             'sleep_interval': DEFAULT_SLEEP_INTERVAL,
             'current_month': get_current_month(),
-            'log_rotate': True}
+            'data_rotate': True}
     config.read(CONFIG_FILE)
 
     if 'filename' in config['Log']:
@@ -342,7 +347,8 @@ if __name__ == "__main__":
             base_query=config['Twitter']['base_query'],
             data_file=config['Twitter']['data_file'],
             sleep_interval=int(config['Twitter']['sleep_interval']),
-            current_month=config['Twitter']['current_month'])
+            current_month=config['Twitter']['current_month'],
+            data_rotate=bool(config['Twitter']['data_rotate']))
     except KeyError as key_error:
         print("Error: {} parameter was not defined in {}".format(key_error, CONFIG_FILE))
         sys.exit(1)
